@@ -8,12 +8,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Load model pipeline and processed data
-@st.cache(allow_output_mutation=True)
+@st.cache_resource
 def load_pipeline():
+    """Load the trained prediction pipeline."""
     return joblib.load('f1_top3_pipeline.joblib')
 
-@st.cache(allow_output_mutation=True)
+@st.cache_data
 def load_data():
+    """Load preprocessed race data."""
     df = pd.read_csv('processed_data.csv', parse_dates=['date'])
     return df
 
@@ -23,7 +25,7 @@ df = load_data()
 st.title("F1 Top-3 Finish Predictie Dashboard")
 
 # Sidebar: seizoen en race selecteren
-st.season = int(df['season'].max())
+default_season = int(df['season'].max())
 seasons = sorted(df['season'].unique())
 selected_season = st.sidebar.selectbox('Selecteer seizoen', seasons, index=len(seasons)-1)
 
@@ -63,7 +65,11 @@ try:
     report = pd.read_csv('model_performance.csv', index_col=0)
     st.dataframe(report)
 except FileNotFoundError:
-    st.write("Modelperformancerapport niet gevonden. Run train_model.py en exporteer naar model_performance.csv.")
+    st.write(
+        "Modelperformancerapport niet gevonden. "
+        "Run `train_model.py` en exporteer de resultaten naar "
+        "`model_performance.csv`."
+    )
 
 # ROC Curve placeholder
 st.subheader("ROC Curve")
