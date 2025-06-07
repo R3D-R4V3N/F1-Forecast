@@ -27,6 +27,24 @@ def load_data():
 pipeline = load_pipeline()
 df = load_data()
 
+# Exacte featurekolommen voor het model
+FEATURE_COLS = [
+    'grid_position','Q1_sec','Q2_sec','Q3_sec',
+    'month','weekday','avg_finish_pos','avg_grid_pos','avg_const_finish',
+    'air_temperature','track_temperature','grid_diff','Q3_diff','grid_temp_int',
+    'circuit_country','circuit_city'
+]
+
+@st.cache_data
+def compute_accuracy(model, data):
+    X_full = data[FEATURE_COLS]
+    y_true = data['top3']
+    y_pred = model.predict(X_full)
+    return (y_pred == y_true).mean()
+
+accuracy = compute_accuracy(pipeline, df)
+st.sidebar.metric("Model accuracy", f"{accuracy:.2%}")
+
 st.title("F1 Top-3 Finish Predictie Dashboard")
 
 # Sidebar: seizoen en race selecteren
@@ -37,20 +55,11 @@ selected_season = st.sidebar.selectbox('Selecteer seizoen', seasons, index=len(s
 races = df[df['season']==selected_season]['raceName'].unique()
 selected_race = st.sidebar.selectbox('Selecteer race', races)
 
-# Number of predictions to display
-top_n = st.sidebar.slider('Aantal coureurs tonen', 1, 10, 3)
-
 # Filter data voor selectie
 df_race = df[(df['season']==selected_season) & (df['raceName']==selected_race)]
 
 # Prepare features
-feature_cols = [
-    'grid_position','Q1_sec','Q2_sec','Q3_sec',
-    'month','weekday','avg_finish_pos','avg_grid_pos','avg_const_finish',
-    'air_temperature','track_temperature','grid_diff','Q3_diff','grid_temp_int',
-    'circuit_country','circuit_city'
-]
-X = df_race[feature_cols]
+X = df_race[FEATURE_COLS]
 
 # Predict
 proba = pipeline.predict_proba(X)[:,1]
@@ -62,12 +71,12 @@ preds = (
     .sort_values('top3_proba', ascending=False)
     .drop_duplicates('Driver.driverId')
 )
-top_preds = preds.head(top_n)
+top_preds = preds.head(3)
 display_df = top_preds.rename(
     columns={"Driver.driverId": "Coureur", "top3_proba": "Kans"}
 )
 st.subheader(
-    f"Top-{top_n} voorspellingen voor {selected_race} {selected_season}"
+    f"Top-3 voorspellingen voor {selected_race} {selected_season}"
 )
 st.table(display_df)
 
