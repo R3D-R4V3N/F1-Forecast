@@ -1,0 +1,6 @@
+meeting_key,session_key,location,date_start,date_end,session_type,session_name,country_key,country_code,country_name,circuit_key,circuit_short_name,gmt_offset,year
+1262,9964,Barcelona,2025-05-30T11:30:00+00:00,2025-05-30T12:30:00+00:00,Practice,Practice 1,1,ESP,Spain,15,Catalunya,02:00:00,2025
+1262,9965,Barcelona,2025-05-30T15:00:00+00:00,2025-05-30T16:00:00+00:00,Practice,Practice 2,1,ESP,Spain,15,Catalunya,02:00:00,2025
+1262,9966,Barcelona,2025-05-31T10:30:00+00:00,2025-05-31T11:30:00+00:00,Practice,Practice 3,1,ESP,Spain,15,Catalunya,02:00:00,2025
+1262,9967,Barcelona,2025-05-31T14:00:00+00:00,2025-05-31T15:00:00+00:00,Qualifying,Qualifying,1,ESP,Spain,15,Catalunya,02:00:00,2025
+1262,9971,Barcelona,2025-06-01T13:00:00+00:00,2025-06-01T15:00:00+00:00,Race,Race,1,ESP,Spain,15,Catalunya,02:00:00,2025
