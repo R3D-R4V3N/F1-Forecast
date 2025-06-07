@@ -7,26 +7,37 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, roc_auc_score, make_scorer
+from sklearn.metrics import (
+    classification_report,
+    roc_auc_score,
+    make_scorer,
+    confusion_matrix,
+    precision_recall_curve,
+    auc,
+    mean_absolute_error
+)
 
 def build_and_train_pipeline():
-    # 1. Laad data
+    # 1. Laad de verwerkte data
     df = pd.read_csv('processed_data.csv')
+
+    # 2. Definieer features & target
     numeric_feats = [
         'grid_position','Q1_sec','Q2_sec','Q3_sec',
         'month','weekday','avg_finish_pos','avg_grid_pos','avg_const_finish',
         'air_temperature','track_temperature','grid_diff','Q3_diff','grid_temp_int'
     ]
     categorical_feats = ['circuit_country','circuit_city']
+
     X = df[numeric_feats + categorical_feats]
     y = df['top3']
 
-    # 2. Split
+    # 3. Train/test-split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
     )
 
-    # 3. Preprocessing
+    # 4. Preprocessing pipelines
     num_pipe = Pipeline([
         ('imputer', SimpleImputer(strategy='median')),
         ('scaler',  StandardScaler())
@@ -35,39 +46,69 @@ def build_and_train_pipeline():
         ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
         ('onehot',  OneHotEncoder(handle_unknown='ignore'))
     ])
-    pre = ColumnTransformer([
+    preprocessor = ColumnTransformer([
         ('num', num_pipe, numeric_feats),
         ('cat', cat_pipe, categorical_feats)
     ])
 
-    # 4. Pipeline + grid-search
+    # 5. Full pipeline
     pipe = Pipeline([
-        ('pre', pre),
+        ('pre', preprocessor),
         ('clf', RandomForestClassifier(random_state=42))
     ])
+
+    # 6. Hyperparameter grid
     param_grid = {
-        'clf__n_estimators': [100, 200],
-        'clf__max_depth':    [None, 5],
+        'clf__n_estimators': [100, 200, 300],
+        'clf__max_depth':    [None, 5, 10],
         'clf__min_samples_split': [2, 5]
     }
+
+    # 7. GridSearchCV
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    grid = GridSearchCV(pipe, param_grid,
-                        scoring=make_scorer(roc_auc_score),
-                        cv=cv, n_jobs=-1, verbose=1)
+    grid = GridSearchCV(
+        pipe, param_grid,
+        scoring=make_scorer(roc_auc_score),
+        cv=cv, n_jobs=-1, verbose=1
+    )
     grid.fit(X_train, y_train)
 
-    # Print resultaten
-    print("Best params:", grid.best_params_)
-    print(f"CV ROC AUC: {grid.best_score_:.3f}")
+    # 8. Print performances
+    print("Best parameters:", grid.best_params_)
+    print(f"Best CV ROC AUC: {grid.best_score_:.3f}")
+
     y_pred  = grid.predict(X_test)
-    y_proba = grid.predict_proba(X_test)[:,1]
-    print("\nTest performance:")
+    y_proba = grid.predict_proba(X_test)[:, 1]
+    print("\nTestset performance:")
     print(classification_report(y_test, y_pred))
     print(f"Test ROC AUC: {roc_auc_score(y_test, y_proba):.3f}")
 
-    # Return the full pipeline (incl. preprocessing & classifier)
+    # **MAE erbij**
+    mae = mean_absolute_error(y_test, y_proba)
+    print(f"Mean Absolute Error (proba vs true): {mae:.3f}")
+
+    # Confusion matrix, PR-AUC, misclassificaties …
+    cm = confusion_matrix(y_test, y_pred)
+    print("\nConfusion Matrix:")
+    print(cm)
+    precision_vals, recall_vals, _ = precision_recall_curve(y_test, y_proba)
+    pr_auc = auc(recall_vals, precision_vals)
+    print(f"Precision-Recall AUC: {pr_auc:.3f}")
+
+    df_test = df.loc[X_test.index].copy()
+    df_test['pred']  = y_pred
+    df_test['proba'] = y_proba
+    miscl = df_test[df_test['pred'] != df_test['top3']]
+    print("\nVoorbeeld misclassificaties:")
+    print(miscl[['Driver.driverId','raceName','finish_position','pred','proba']].head(5))
+
+    # Return de uiteindelijke pipeline
     return grid.best_estimator_
 
-if __name__ == '__main__':
-    # bij direct run: train en print, maar ook pipeline terug
+def main():
     pipeline = build_and_train_pipeline()
+    # eventueel: sla hier je model_performance.csv of logica op
+    pass
+
+if __name__ == '__main__':
+    main()
