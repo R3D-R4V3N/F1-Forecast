@@ -1,12 +1,15 @@
 import requests
 import pandas as pd
+import time
 from typing import List, Dict, Optional
 
 OPENF1_BASE = "https://api.openf1.org/v1"
 JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
 
 
-def get_json_with_retry(url: str, params: Optional[Dict] = None, retries: int = 3) -> Optional[Dict]:
+def get_json_with_retry(
+    url: str, params: Optional[Dict] = None, retries: int = 3, backoff: float = 1.0
+) -> Optional[Dict]:
     if params is None:
         params = {}
     for attempt in range(retries):
@@ -14,13 +17,22 @@ def get_json_with_retry(url: str, params: Optional[Dict] = None, retries: int = 
             resp = requests.get(url, params=params, timeout=10)
             if resp.status_code == 404:
                 return None
-            if resp.status_code >= 500 and attempt < retries - 1:
-                continue
+            if resp.status_code == 429:
+                wait = resp.headers.get("Retry-After")
+                delay = float(wait) if wait and wait.isdigit() else backoff
+                time.sleep(delay)
+                if attempt < retries - 1:
+                    continue
+            if resp.status_code >= 500:
+                if attempt < retries - 1:
+                    time.sleep(backoff * (2 ** attempt))
+                    continue
             resp.raise_for_status()
             return resp.json()
         except requests.RequestException:
             if attempt == retries - 1:
                 raise
+            time.sleep(backoff * (2 ** attempt))
     return None
 
 
