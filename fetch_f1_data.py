@@ -9,7 +9,7 @@ JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
 
 
 def fetch_json(url: str, params: Optional[Dict] = None, retries: int = 3, backoff: float = 1.0) -> Optional[Dict]:
-    """Fetch JSON with simple retry logic for 5xx errors and graceful skip on 404."""
+    """Fetch JSON with retry logic, handling 429 and 5xx errors and skipping 404."""
     if params is None:
         params = {}
     for attempt in range(retries):
@@ -18,6 +18,12 @@ def fetch_json(url: str, params: Optional[Dict] = None, retries: int = 3, backof
             if resp.status_code == 404:
                 print(f"Skipping {url}: 404 Not Found")
                 return None
+            if resp.status_code == 429:
+                wait = int(resp.headers.get("Retry-After", 1))
+                print(f"Rate limited on {url}. Waiting {wait}s")
+                time.sleep(wait)
+                if attempt < retries - 1:
+                    continue
             if resp.status_code >= 500:
                 if attempt < retries - 1:
                     time.sleep(backoff * (2 ** attempt))
