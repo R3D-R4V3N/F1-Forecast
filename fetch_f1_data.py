@@ -23,6 +23,7 @@ def get_json_with_retry(
                 time.sleep(delay)
                 if attempt < retries - 1:
                     continue
+                return None
             if resp.status_code >= 500:
                 if attempt < retries - 1:
                     time.sleep(backoff * (2 ** attempt))
@@ -107,7 +108,10 @@ def fetch_jolpica_data() -> List[pd.DataFrame]:
     for page in season_pages:
         df = normalize_and_tag(page, RECORD_PATHS["seasons"], "jolpica_seasons")
         dfs.append(df)
-        seasons.extend([s["season"] for s in page.get("MRData", {}).get("SeasonTable", {}).get("Seasons", [])])
+        seasons.extend(
+            [s["season"] for s in page.get("MRData", {}).get("SeasonTable", {}).get("Seasons", [])]
+        )
+    seasons = [s for s in seasons if int(s) >= 2022]
     endpoints = [
         "circuits",
         "races",
