@@ -5,14 +5,17 @@ import pandas as pd
 import joblib
 from sklearn.metrics import classification_report, roc_auc_score
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Load model pipeline and processed data
-@st.cache(allow_output_mutation=True)
+@st.cache_resource
 def load_pipeline():
+    """Load the trained prediction pipeline."""
     return joblib.load('f1_top3_pipeline.joblib')
 
-@st.cache(allow_output_mutation=True)
+@st.cache_data
 def load_data():
+    """Load preprocessed race data."""
     df = pd.read_csv('processed_data.csv', parse_dates=['date'])
     return df
 
@@ -22,7 +25,7 @@ df = load_data()
 st.title("F1 Top-3 Finish Predictie Dashboard")
 
 # Sidebar: seizoen en race selecteren
-st.season = int(df['season'].max())
+default_season = int(df['season'].max())
 seasons = sorted(df['season'].unique())
 selected_season = st.sidebar.selectbox('Selecteer seizoen', seasons, index=len(seasons)-1)
 
@@ -62,7 +65,11 @@ try:
     report = pd.read_csv('model_performance.csv', index_col=0)
     st.dataframe(report)
 except FileNotFoundError:
-    st.write("Modelperformancerapport niet gevonden. Run train_model.py en exporteer naar model_performance.csv.")
+    st.write(
+        "Modelperformancerapport niet gevonden. "
+        "Run `train_model.py` en exporteer de resultaten naar "
+        "`model_performance.csv`."
+    )
 
 # ROC Curve placeholder
 st.subheader("ROC Curve")
@@ -74,3 +81,65 @@ ax.plot(fpr, tpr)
 ax.set_xlabel('False Positive Rate')
 ax.set_ylabel('True Positive Rate')
 st.pyplot(fig)
+
+# --------------------------------------------
+# Extra visualisaties en feature importance
+# --------------------------------------------
+
+# Bar chart van de top-3 kansen
+fig, ax = plt.subplots()
+ax.bar(top3['Driver.driverId'], top3['top3_proba'], color='skyblue')
+ax.set_ylabel('Kans op top 3')
+ax.set_xlabel('Coureur')
+ax.set_title('Top-3 voorspellingen')
+st.pyplot(fig)
+
+# Histogram van alle voorspelde kansen voor de geselecteerde race
+st.subheader('Verdeling voorspelde kansen')
+fig, ax = plt.subplots()
+ax.hist(df_race['top3_proba'], bins=20, color='gray', edgecolor='black')
+ax.set_xlabel('Voorspelde kans')
+ax.set_ylabel('Aantal rijders')
+st.pyplot(fig)
+
+# Scatterplot grid positie vs voorspelde kans
+st.subheader('Grid positie vs voorspelde kans')
+fig, ax = plt.subplots()
+ax.scatter(df_race['grid_position'], df_race['top3_proba'], alpha=0.7)
+ax.set_xlabel('Startpositie')
+ax.set_ylabel('Kans op top 3')
+st.pyplot(fig)
+
+# Correlatiematrix van numerieke features
+st.subheader('Correlatiematrix (numerieke features)')
+numeric_feats = [
+    'grid_position','Q1_sec','Q2_sec','Q3_sec',
+    'month','weekday','avg_finish_pos','avg_grid_pos','avg_const_finish',
+    'air_temperature','track_temperature','grid_diff','Q3_diff','grid_temp_int'
+]
+corr = df_race[numeric_feats].corr()
+fig, ax = plt.subplots(figsize=(8,6))
+cax = ax.matshow(corr, cmap='coolwarm')
+fig.colorbar(cax)
+ax.set_xticks(range(len(corr.columns)))
+ax.set_xticklabels(corr.columns, rotation=90)
+ax.set_yticks(range(len(corr.columns)))
+ax.set_yticklabels(corr.columns)
+st.pyplot(fig)
+
+# Feature importance grafiek indien beschikbaar
+st.subheader('Feature importance')
+try:
+    feat_names = pipeline.named_steps['pre'].get_feature_names_out()
+    importances = pipeline.named_steps['clf'].feature_importances_
+    fi_df = pd.DataFrame({
+        'feature': feat_names,
+        'importance': importances
+    }).sort_values('importance', ascending=False).head(15)
+    fig, ax = plt.subplots()
+    ax.barh(fi_df['feature'][::-1], fi_df['importance'][::-1])
+    ax.set_xlabel('Belang')
+    ax.set_ylabel('Feature')
+    st.pyplot(fig)
+except Exception:
+    st.write('Feature importance niet beschikbaar voor dit model.')
