@@ -134,13 +134,22 @@ def fetch_jolpica_data() -> List[pd.DataFrame]:
 
 
 def main() -> None:
-    dfs = fetch_openf1_data() + fetch_jolpica_data()
-    if not dfs:
-        print("No data fetched.")
-        return
-    master_df = pd.concat(dfs, ignore_index=True, sort=False)
-    master_df.to_csv("f1_data.csv", index=False)
-    print("Wrote", len(master_df), "rows to f1_data.csv")
+    openf1_dfs = fetch_openf1_data()
+    jolpica_dfs = fetch_jolpica_data()
+
+    if openf1_dfs:
+        openf1_df = pd.concat(openf1_dfs, ignore_index=True, sort=False)
+        openf1_df.to_csv("f1_data_openf1.csv", index=False)
+        print("Wrote", len(openf1_df), "rows to f1_data_openf1.csv")
+    else:
+        print("No OpenF1 data fetched.")
+
+    if jolpica_dfs:
+        jolpica_df = pd.concat(jolpica_dfs, ignore_index=True, sort=False)
+        jolpica_df.to_csv("f1_data_jolpico.csv", index=False)
+        print("Wrote", len(jolpica_df), "rows to f1_data_jolpico.csv")
+    else:
+        print("No Jolpica data fetched.")
 
 
 if __name__ == "__main__":
