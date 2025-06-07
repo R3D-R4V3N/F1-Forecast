@@ -1,28 +1,22 @@
 import requests
 import pandas as pd
 import time
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
+# Base URLs for the two APIs
 OPENF1_BASE = "https://api.openf1.org/v1"
 JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
 
 
-def get_json_with_retry(
-    url: str, params: Optional[Dict] = None, retries: int = 3, backoff: float = 1.0
-) -> Optional[Dict]:
+def fetch_json(url: str, params: Optional[Dict] = None, retries: int = 3, backoff: float = 1.0) -> Optional[Dict]:
+    """Fetch JSON with simple retry logic for 5xx errors and graceful skip on 404."""
     if params is None:
         params = {}
     for attempt in range(retries):
         try:
             resp = requests.get(url, params=params, timeout=10)
             if resp.status_code == 404:
-                return None
-            if resp.status_code == 429:
-                wait = resp.headers.get("Retry-After")
-                delay = float(wait) if wait and wait.isdigit() else backoff
-                time.sleep(delay)
-                if attempt < retries - 1:
-                    continue
+                print(f"Skipping {url}: 404 Not Found")
                 return None
             if resp.status_code >= 500:
                 if attempt < retries - 1:
@@ -30,42 +24,53 @@ def get_json_with_retry(
                     continue
             resp.raise_for_status()
             return resp.json()
-        except requests.RequestException:
-            if attempt == retries - 1:
-                raise
-            time.sleep(backoff * (2 ** attempt))
+        except requests.RequestException as exc:
+            if attempt < retries - 1:
+                time.sleep(backoff * (2 ** attempt))
+                continue
+            print(f"Failed to fetch {url}: {exc}")
+            return None
     return None
 
 
-def normalize_and_tag(data: Dict, record_path: List[str], source: str) -> pd.DataFrame:
-    df = pd.json_normalize(data, record_path=record_path, errors="ignore")
-    df["source"] = source
-    return df
+def fetch_openf1_data() -> None:
+    """Fetch latest OpenF1 session and weather data and write to CSVs."""
+    sess = fetch_json(f"{OPENF1_BASE}/sessions", {"meeting_key": "latest", "session_key": "latest"})
+    if not sess:
+        print("No latest session found from OpenF1")
+        return
 
+    meeting_key = sess[0]["meeting_key"]
+    session_key = sess[0]["session_key"]
 
-RECORD_PATHS = {
-    "seasons": ["MRData", "SeasonTable", "Seasons"],
-    "circuits": ["MRData", "CircuitTable", "Circuits"],
-    "races": ["MRData", "RaceTable", "Races"],
-    "constructors": ["MRData", "ConstructorTable", "Constructors"],
-    "drivers": ["MRData", "DriverTable", "Drivers"],
-    "results": ["MRData", "RaceTable", "Races"],
-    "sprint": ["MRData", "RaceTable", "Races"],
-    "qualifying": ["MRData", "RaceTable", "Races"],
-    "driverstandings": ["MRData", "StandingsTable", "StandingsLists"],
-    "constructorstandings": ["MRData", "StandingsTable", "StandingsLists"],
-    "status": ["MRData", "StatusTable", "Status"],
-}
+    weather = fetch_json(f"{OPENF1_BASE}/weather", {"meeting_key": meeting_key, "session_key": session_key})
+    if weather is not None:
+        df_weather = pd.json_normalize(weather)
+        df_weather["source"] = "openf1_weather"
+        df_weather.to_csv("openf1_weather.csv", index=False)
+        print(f"Wrote {len(df_weather)} rows to openf1_weather.csv")
+    else:
+        print("No weather data returned")
+
+    sessions = fetch_json(f"{OPENF1_BASE}/sessions", {"meeting_key": meeting_key})
+    if sessions is not None:
+        df_sessions = pd.json_normalize(sessions)
+        df_sessions["source"] = "openf1_sessions"
+        df_sessions.to_csv("openf1_sessions.csv", index=False)
+        print(f"Wrote {len(df_sessions)} rows to openf1_sessions.csv")
+    else:
+        print("No session list returned")
 
 
 def fetch_paginated(url: str, params: Optional[Dict] = None) -> List[Dict]:
+    """Retrieve all pages for a Jolpica endpoint."""
     if params is None:
         params = {}
     pages = []
     offset = 0
     while True:
         params["offset"] = offset
-        data = get_json_with_retry(url, params=params)
+        data = fetch_json(url, params)
         if data is None:
             break
         pages.append(data)
@@ -78,78 +83,59 @@ def fetch_paginated(url: str, params: Optional[Dict] = None) -> List[Dict]:
     return pages
 
 
-def fetch_openf1_data() -> List[pd.DataFrame]:
-    dfs: List[pd.DataFrame] = []
-    sess = get_json_with_retry(
-        f"{OPENF1_BASE}/sessions", params={"meeting_key": "latest", "session_key": "latest"}
-    )
-    if not sess:
-        return dfs
-    meeting_key = sess[0]["meeting_key"]
-    session_key = sess[0]["session_key"]
-    weather = get_json_with_retry(
-        f"{OPENF1_BASE}/weather",
-        params={"meeting_key": meeting_key, "session_key": session_key},
-    )
-    if weather is not None:
-        dfs.append(pd.json_normalize(weather).assign(source="openf1_weather"))
-    sessions = get_json_with_retry(
-        f"{OPENF1_BASE}/sessions", params={"meeting_key": meeting_key}
-    )
-    if sessions is not None:
-        dfs.append(pd.json_normalize(sessions).assign(source="openf1_sessions"))
-    return dfs
+# Mapping of Jolpica endpoints to record_path and meta for pandas.json_normalize
+JOLPICA_ENDPOINTS = {
+    "circuits": ("{season}/circuits/", ["MRData", "CircuitTable", "Circuits"], ["season"]),
+    "races": ("{season}/races/", ["MRData", "RaceTable", "Races"], ["season"]),
+    "results": ("{season}/results/", ["MRData", "RaceTable", "Races", "Results"], ["season", "round", "raceName"]),
+    "sprint": ("{season}/sprint/", ["MRData", "RaceTable", "Races", "SprintResults"], ["season", "round", "raceName"]),
+    "qualifying": ("{season}/qualifying/", ["MRData", "RaceTable", "Races", "QualifyingResults"], ["season", "round", "raceName"]),
+    "driverstandings": ("{season}/driverstandings/", ["MRData", "StandingsTable", "StandingsLists", "DriverStandings"], ["season"]),
+    "constructorstandings": ("{season}/constructorstandings/", ["MRData", "StandingsTable", "StandingsLists", "ConstructorStandings"], ["season"]),
+    "status": ("{season}/status/", ["MRData", "StatusTable", "Statuses"], ["season"]),
+}
 
 
-def fetch_jolpica_data() -> List[pd.DataFrame]:
-    dfs: List[pd.DataFrame] = []
-    season_pages = fetch_paginated(f"{JOLPICA_BASE}/seasons/")
-    seasons: List[str] = []
-    for page in season_pages:
-        df = normalize_and_tag(page, RECORD_PATHS["seasons"], "jolpica_seasons")
-        dfs.append(df)
-        seasons.extend(
-            [s["season"] for s in page.get("MRData", {}).get("SeasonTable", {}).get("Seasons", [])]
-        )
-    seasons = [s for s in seasons if int(s) >= 2022]
-    endpoints = [
-        "circuits",
-        "races",
-        "constructors",
-        "drivers",
-        "results",
-        "sprint",
-        "qualifying",
-        "driverstandings",
-        "constructorstandings",
-        "status",
-    ]
+def fetch_jolpica_data() -> None:
+    """Fetch data from Jolpica API for seasons 2022 onward and write each endpoint to separate CSV."""
+    seasons_resp = fetch_json(f"{JOLPICA_BASE}/seasons/")
+    if not seasons_resp:
+        print("Could not retrieve seasons from Jolpica")
+        return
+
+    seasons_list = [s["season"] for s in seasons_resp.get("MRData", {}).get("SeasonTable", {}).get("Seasons", [])]
+    seasons = [s for s in seasons_list if int(s) >= 2022]
+    if not seasons:
+        print("No seasons >= 2022 found")
+        return
+
+    # Accumulate DataFrames for each endpoint
+    endpoint_dfs: Dict[str, List[pd.DataFrame]] = {ep: [] for ep in JOLPICA_ENDPOINTS}
+
     for season in seasons:
-        for ep in endpoints:
-            url = f"{JOLPICA_BASE}/{season}/{ep}/"
+        for ep, (path, record_path, meta) in JOLPICA_ENDPOINTS.items():
+            url = f"{JOLPICA_BASE}/" + path.format(season=season)
             for page in fetch_paginated(url):
-                df = normalize_and_tag(page, RECORD_PATHS[ep], f"jolpica_{ep}")
-                dfs.append(df)
-    return dfs
+                # Ensure season metadata in case it's not present in page structure
+                page.setdefault("season", season)
+                df = pd.json_normalize(page, record_path=record_path, meta=meta, errors="ignore")
+                df["source"] = f"jolpica_{ep}"
+                endpoint_dfs[ep].append(df)
+
+    # Write DataFrames to CSV
+    for ep, dfs in endpoint_dfs.items():
+        if dfs:
+            out_df = pd.concat(dfs, ignore_index=True, sort=False)
+            filename = f"jolpica_{ep}.csv"
+            out_df.to_csv(filename, index=False)
+            print(f"Wrote {len(out_df)} rows to {filename}")
+        else:
+            print(f"No data for {ep}")
 
 
 def main() -> None:
-    openf1_dfs = fetch_openf1_data()
-    jolpica_dfs = fetch_jolpica_data()
-
-    if openf1_dfs:
-        openf1_df = pd.concat(openf1_dfs, ignore_index=True, sort=False)
-        openf1_df.to_csv("f1_data_openf1.csv", index=False)
-        print("Wrote", len(openf1_df), "rows to f1_data_openf1.csv")
-    else:
-        print("No OpenF1 data fetched.")
-
-    if jolpica_dfs:
-        jolpica_df = pd.concat(jolpica_dfs, ignore_index=True, sort=False)
-        jolpica_df.to_csv("f1_data_jolpico.csv", index=False)
-        print("Wrote", len(jolpica_df), "rows to f1_data_jolpico.csv")
-    else:
-        print("No Jolpica data fetched.")
+    fetch_openf1_data()
+    fetch_jolpica_data()
 
 
 if __name__ == "__main__":
