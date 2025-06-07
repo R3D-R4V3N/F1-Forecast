@@ -17,7 +17,17 @@ from sklearn.metrics import (
     mean_absolute_error
 )
 
-def build_and_train_pipeline():
+def build_and_train_pipeline(export_csv=True, csv_path="model_performance.csv"):
+    """Bouwt de pipeline, traint hem en retourneert het beste model.
+
+    Parameters
+    ----------
+    export_csv : bool, optional
+        Of de evaluatiemetrics naar ``csv_path`` weggeschreven moeten worden.
+    csv_path : str, optional
+        Pad waar het CSV-bestand met prestaties wordt opgeslagen.
+    """
+
     # 1. Laad de verwerkte data
     df = pd.read_csv('processed_data.csv')
 
@@ -102,13 +112,19 @@ def build_and_train_pipeline():
     print("\nVoorbeeld misclassificaties:")
     print(miscl[['Driver.driverId','raceName','finish_position','pred','proba']].head(5))
 
+    if export_csv:
+        perf_df = pd.DataFrame({
+            'Metric': ['CV ROC AUC', 'Test ROC AUC', 'Mean Abs Error', 'PR AUC'],
+            'Value': [grid.best_score_, roc_auc_score(y_test, y_proba), mae, pr_auc]
+        }).set_index('Metric')
+        perf_df.to_csv(csv_path)
+        print(f"Model performance saved to {csv_path}")
+
     # Return de uiteindelijke pipeline
     return grid.best_estimator_
 
 def main():
-    pipeline = build_and_train_pipeline()
-    # eventueel: sla hier je model_performance.csv of logica op
-    pass
+    build_and_train_pipeline()
 
 if __name__ == '__main__':
     main()
