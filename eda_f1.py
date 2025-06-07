@@ -1,4 +1,9 @@
-"""Initial EDA script for F1 datasets."""
+"""Initial EDA script for F1 datasets.
+
+This script loads the Jolpica and OpenF1 CSV exports, merges them into a
+single DataFrame and prints some basic statistics.  It is intentionally light on
+visuals so it can run in constrained environments.
+"""
 
 import os
 import pandas as pd
@@ -20,7 +25,8 @@ def main():
         'sessions':      'openf1_sessions.csv',
     }
 
-    # Load each CSV into a dictionary of DataFrames
+    # Load each CSV into a dictionary of DataFrames, skipping any that are
+    # missing.  This keeps the script runnable even if some datasets are absent.
     dfs = {}
     for name, fp in paths.items():
         if os.path.exists(fp):
@@ -29,22 +35,48 @@ def main():
             print(f"Warning: {fp} not found - skipping {name}")
 
     # Merge qualifying results with race metadata
+    if 'qualifying' not in dfs or 'races' not in dfs:
+        print("Missing qualifying or races CSVs; cannot build master DataFrame.")
+        return
+
     df_master = dfs['qualifying'].merge(
         dfs['races'][['season', 'round', 'raceName', 'date']],
         on=['season', 'round', 'raceName'], how='left'
     )
 
-    # Merge in weather and session info using meeting_key
-    df_master = df_master.merge(
-        dfs['weather'][['meeting_key', 'air_temperature', 'track_temperature']],
-        on='meeting_key', how='left'
-    ).merge(
-        dfs['sessions'][['meeting_key', 'session_key', 'circuit_short_name']],
-        on='meeting_key', how='left'
-    )
+    # Standardise qualifying column names to lower case
+    df_master.rename(columns={'Q1': 'q1', 'Q2': 'q2', 'Q3': 'q3'}, inplace=True)
+
+    # Merge in weather and session info.  First combine those two datasets on
+    # 'meeting_key', then merge with the master DataFrame if possible.
+    if 'weather' in dfs and 'sessions' in dfs:
+        weather_sessions = dfs['weather'].merge(
+            dfs['sessions'],
+            on='meeting_key',
+            how='left'
+        )
+        if 'meeting_key' in df_master.columns:
+            df_master = df_master.merge(
+                weather_sessions[
+                    [
+                        'meeting_key',
+                        'air_temperature',
+                        'track_temperature',
+                        'session_key',
+                        'circuit_short_name',
+                    ]
+                ],
+                on='meeting_key',
+                how='left'
+            )
+        else:
+            print(
+                "meeting_key not present in qualifying data; skipping weather/"
+                "session merge"
+            )
 
     # Display basic info and missing values
-    print(df_master.info())
+    df_master.info()
     print(df_master.isnull().sum())
 
     # Convert date columns to datetime
