@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import f1_score
 from sklearn.metrics import (
     classification_report, roc_auc_score,
     make_scorer, confusion_matrix,
@@ -22,7 +23,8 @@ def main():
     numeric_feats = [
         'grid_position','Q1_sec','Q2_sec','Q3_sec',
         'month','weekday','avg_finish_pos','avg_grid_pos','avg_const_finish',
-        'air_temperature','track_temperature'
+        'air_temperature','track_temperature',
+        'grid_diff','Q3_diff','grid_temp_int'
     ]
     categorical_feats = ['circuit_country','circuit_city']
 
@@ -104,6 +106,20 @@ def main():
             'Driver.driverId','raceName','finish_position','pred','proba'
         ]].head(10)
     )
+# … na de huidige evaluatie in main(), vóór if __name__ == '__main__':
+    # 10b. Zoek beste threshold voor maximale F1
+    precision_vals, recall_vals, thresholds = precision_recall_curve(y_test, y_proba)
+    f1_scores = 2 * (precision_vals * recall_vals) / (precision_vals + recall_vals + 1e-10)
+    best_idx = f1_scores.argmax()
+    best_thresh = thresholds[best_idx]
+    print(f"\nOptimal threshold for max F1: {best_thresh:.2f} (F1 = {f1_scores[best_idx]:.3f})")
 
+    # 10c. Evalueer met die threshold
+    y_pred_thresh = (y_proba >= best_thresh)
+    print("\nClassification Report at optimal threshold:")
+    print(classification_report(y_test, y_pred_thresh))
+    cm_thresh = confusion_matrix(y_test, y_pred_thresh)
+    print("Confusion Matrix at optimal threshold:")
+    print(cm_thresh)
 if __name__ == '__main__':
     main()

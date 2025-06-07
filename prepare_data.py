@@ -110,6 +110,19 @@ def main():
         on='session_key', how='left'
     )
 
+    # … na de existing rolling averages & weather-imputatie …
+
+    # 14a. Grid-difference feature
+    df['grid_diff'] = df['avg_grid_pos'] - df['grid_position']
+
+    # 14b. Q3-difference feature (eerst per driver avg Q3_sec berekenen)
+    driver_q3 = df.groupby('Driver.driverId')['Q3_sec'].transform('mean')
+    df['Q3_diff'] = driver_q3 - df['Q3_sec']
+
+    # 14c. Interaction grid × track temperature
+    df['grid_temp_int'] = df['grid_position'] * df['track_temperature']
+
+
     # 15. Impute weather
     for col in ['air_temperature','track_temperature']:
         df[col] = df[col].fillna(df[col].median())
