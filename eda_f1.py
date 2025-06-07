@@ -1,111 +1,80 @@
-"""Initial EDA script for F1 datasets.
-
-This script loads the Jolpica and OpenF1 CSV exports, merges them into a
-single DataFrame and prints some basic statistics.  It is intentionally light on
-visuals so it can run in constrained environments.
-"""
-
+# eda_f1.py
 import os
 import pandas as pd
 
-
 def main():
     """Perform initial EDA on the fetched F1 datasets."""
-    # Map of DataFrame names to their CSV paths
+    # Paths to CSVs
     paths = {
-        'circuits':      'jolpica_circuits.csv',
-        'races':         'jolpica_races.csv',
-        'results':       'jolpica_results.csv',
-        'sprint':        'jolpica_sprint.csv',
-        'qualifying':    'jolpica_qualifying.csv',
-        'driverstd':     'jolpica_driverstandings.csv',
-        'constructorstd':'jolpica_constructorstandings.csv',
-        'status':        'jolpica_status.csv',
-        'weather':       'openf1_weather.csv',
-        'sessions':      'openf1_sessions.csv',
+        'circuits':       'jolpica_circuits.csv',
+        'races':          'jolpica_races.csv',
+        'results':        'jolpica_results.csv',
+        'sprint':         'jolpica_sprint.csv',
+        'qualifying':     'jolpica_qualifying.csv',
+        'driverstd':      'jolpica_driverstandings.csv',
+        'constructorstd': 'jolpica_constructorstandings.csv',
+        'weather':        'openf1_weather.csv',
+        'sessions':       'openf1_sessions.csv',
     }
 
-    # Load each CSV into a dictionary of DataFrames, skipping any that are
-    # missing.  This keeps the script runnable even if some datasets are absent.
+    # Load dataframes
     dfs = {}
-    for name, fp in paths.items():
-        if os.path.exists(fp):
-            dfs[name] = pd.read_csv(fp)
+    for name, file in paths.items():
+        if os.path.exists(file):
+            dfs[name] = pd.read_csv(file)
         else:
-            print(f"Warning: {fp} not found - skipping {name}")
+            print(f"Warning: {file} not found, skipping '{name}'")
 
-    # Merge qualifying results with race metadata
-    if 'qualifying' not in dfs or 'races' not in dfs:
-        print("Missing qualifying or races CSVs; cannot build master DataFrame.")
-        return
-
+    # 1) Merge qualifying with race metadata
     df_master = dfs['qualifying'].merge(
-        dfs['races'][['season', 'round', 'raceName', 'date']],
-        on=['season', 'round', 'raceName'], how='left'
+        dfs['races'][['season','round','raceName','date']],
+        on=['season','round','raceName'], how='left'
     )
+    print("Merged qualifying and races:", df_master.shape)
 
-    # Standardise qualifying column names to lower case
-    df_master.rename(columns={'Q1': 'q1', 'Q2': 'q2', 'Q3': 'q3'}, inplace=True)
-
-    # Merge in weather and session info.  First combine those two datasets on
-    # 'meeting_key', then merge with the master DataFrame if possible.
-    if 'weather' in dfs and 'sessions' in dfs:
-        weather_sessions = dfs['weather'].merge(
-            dfs['sessions'],
-            on='meeting_key',
-            how='left'
+    # 2) Merge weather if meeting_key exists
+    if 'meeting_key' in df_master.columns and 'meeting_key' in dfs.get('weather', pd.DataFrame()).columns:
+        df_master = df_master.merge(
+            dfs['weather'][['meeting_key','air_temperature','track_temperature']],
+            on='meeting_key', how='left'
         )
-        if 'meeting_key' in df_master.columns:
-            df_master = df_master.merge(
-                weather_sessions[
-                    [
-                        'meeting_key',
-                        'air_temperature',
-                        'track_temperature',
-                        'session_key',
-                        'circuit_short_name',
-                    ]
-                ],
-                on='meeting_key',
-                how='left'
-            )
-        else:
-            print(
-                "meeting_key not present in qualifying data; skipping weather/"
-                "session merge"
-            )
+        print("Merged weather data:", df_master.shape)
 
-    # Display basic info and missing values
-    df_master.info()
-    print(df_master.isnull().sum())
+    # 3) Merge sessions if season & round exist
+    sess_df = dfs.get('sessions', pd.DataFrame())
+    if 'season' in sess_df.columns and 'round' in sess_df.columns:
+        df_master = df_master.merge(
+            sess_df[['season','round','session_key','circuit_short_name']],
+            on=['season','round'], how='left'
+        )
+        print("Merged session data:", df_master.shape)
 
-    # Convert date columns to datetime
-    if 'date' in df_master.columns:
-        df_master['date'] = pd.to_datetime(df_master['date'], errors='coerce')
-    if 'date_start' in df_master.columns:
-        df_master['date_start'] = pd.to_datetime(df_master['date_start'], errors='coerce')
+    # 4) Display structure and missing values
+    print(df_master.info())
+    print("Missing values by column:\n", df_master.isnull().sum())
 
-    # Convert potential numeric columns
-    numeric_cols = ['q1', 'q2', 'q3', 'air_temperature', 'track_temperature']
-    for col in numeric_cols:
+    # 5) Convert date columns
+    for col in ['date','date_start']:
+        if col in df_master.columns:
+            df_master[col] = pd.to_datetime(df_master[col], errors='coerce')
+
+    # 6) Convert numeric columns
+    for col in ['q1','q2','q3','air_temperature','track_temperature']:
         if col in df_master.columns:
             df_master[col] = pd.to_numeric(df_master[col], errors='coerce')
 
-    # Basic statistics for numeric columns
-    print(df_master.describe())
+    # 7) Basic statistics and correlation
+    print("\nDescriptive statistics:\n", df_master.describe())
+    corr = df_master.select_dtypes(include='number').corr()
+    print("\nCorrelation matrix:\n", corr)
 
-    # Correlation matrix for numeric fields
-    corr = df_master.select_dtypes('number').corr()
-    print(corr)
-
-    # Placeholder for histograms and heatmap
+    # 8) Placeholder for visualizations
     # import matplotlib.pyplot as plt
-    # df_master['q3'].hist()
+    # df_master[['q3','air_temperature']].hist(bins=20)
     # plt.show()
     # plt.matshow(corr)
     # plt.colorbar()
     # plt.show()
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
