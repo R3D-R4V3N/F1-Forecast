@@ -3,15 +3,23 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import altair as alt
 from sklearn.metrics import classification_report, roc_auc_score
 import matplotlib.pyplot as plt
 
+# Configure the Streamlit page
+st.set_page_config(
+    page_title="F1 Top-3 Predictie Dashboard",
+    page_icon="🏎️",
+    layout="wide",
+)
+
 # Load model pipeline and processed data
-@st.cache(allow_output_mutation=True)
+@st.cache_data
 def load_pipeline():
     return joblib.load('f1_top3_pipeline.joblib')
 
-@st.cache(allow_output_mutation=True)
+@st.cache_data
 def load_data():
     df = pd.read_csv('processed_data.csv', parse_dates=['date'])
     return df
@@ -29,6 +37,9 @@ selected_season = st.sidebar.selectbox('Selecteer seizoen', seasons, index=len(s
 races = df[df['season']==selected_season]['raceName'].unique()
 selected_race = st.sidebar.selectbox('Selecteer race', races)
 
+# Number of predictions to display
+top_n = st.sidebar.slider('Aantal coureurs tonen', 1, 10, 3)
+
 # Filter data voor selectie
 df_race = df[(df['season']==selected_season) & (df['raceName']==selected_race)]
 
@@ -45,15 +56,32 @@ X = df_race[feature_cols]
 proba = pipeline.predict_proba(X)[:,1]
 df_race['top3_proba'] = proba
 
-# Display top 3 predictions
-top3 = (
-    df_race[['Driver.driverId','top3_proba']]
+# Display predictions
+preds = (
+    df_race[['Driver.driverId', 'top3_proba']]
     .sort_values('top3_proba', ascending=False)
     .drop_duplicates('Driver.driverId')
-    .head(3)
 )
-st.subheader(f"Top-3 voorspellingen voor {selected_race} {selected_season}")
-st.table(top3.rename(columns={'Driver.driverId':'Coureur','top3_proba':'Kans'}))
+top_preds = preds.head(top_n)
+display_df = top_preds.rename(
+    columns={"Driver.driverId": "Coureur", "top3_proba": "Kans"}
+)
+st.subheader(
+    f"Top-{top_n} voorspellingen voor {selected_race} {selected_season}"
+)
+st.table(display_df)
+
+# Bar chart of probabilities
+chart = (
+    alt.Chart(display_df)
+    .mark_bar()
+    .encode(
+        x=alt.X("Coureur:N", sort="-y"),
+        y=alt.Y("Kans:Q", title="Kans op top-3"),
+        tooltip=["Coureur", alt.Tooltip("Kans", format=".2f")],
+    )
+)
+st.altair_chart(chart, use_container_width=True)
 
 # Show performance metrics for train/test
 st.subheader("Model Performance (Train/Test)")
