@@ -1,3 +1,6 @@
+"""Initial EDA script for F1 datasets."""
+
+import os
 import pandas as pd
 
 
@@ -18,7 +21,12 @@ def main():
     }
 
     # Load each CSV into a dictionary of DataFrames
-    dfs = {name: pd.read_csv(fp) for name, fp in paths.items()}
+    dfs = {}
+    for name, fp in paths.items():
+        if os.path.exists(fp):
+            dfs[name] = pd.read_csv(fp)
+        else:
+            print(f"Warning: {fp} not found - skipping {name}")
 
     # Merge qualifying results with race metadata
     df_master = dfs['qualifying'].merge(
