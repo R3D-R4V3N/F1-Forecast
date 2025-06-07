@@ -12,6 +12,7 @@ F1-Forecast is a small project that predicts which drivers will finish in the to
 | `train_model.py` | Train the main RandomForest pipeline using the processed data. Hyperparameters are tuned with `GridSearchCV`. |
 | `train_model_lgbm.py` | Alternative model using LightGBM. |
 | `train_model_nested_cv.py` | Example of nested cross‑validation for more robust evaluation. |
+| `train_model_xgb.py` | Experimental model using XGBoost. |
 | `export_model.py` | Calls `build_and_train_pipeline()` from `train_model.py` and saves the best pipeline to `f1_top3_pipeline.joblib`. |
 | `infer.py` | Load the saved pipeline and generate top‑3 predictions for the most recent race in the dataset. |
 | `streamlit_app.py` | Streamlit dashboard to interactively explore predictions. |
@@ -51,7 +52,7 @@ F1-Forecast is a small project that predicts which drivers will finish in the to
    - A `RandomForestClassifier` is tuned with a small parameter grid.
    - Metrics such as ROC‑AUC, precision/recall and mean absolute error are printed.
 
-   To experiment with a different algorithm you can run `train_model_lgbm.py` or `train_model_nested_cv.py`.
+   To experiment with a different algorithm you can run `train_model_lgbm.py`, `train_model_xgb.py` or `train_model_nested_cv.py`.
 
 4. **Export trained pipeline**
    ```bash
@@ -88,9 +89,9 @@ See `f1_api_docs.md` for example queries and field descriptions.
 
 ## Requirements
 
-This project relies on common Python data‑science packages such as `pandas`, `scikit‑learn`, `joblib`, `lightgbm` and `streamlit`. Install them via pip:
+This project relies on common Python data‑science packages such as `pandas`, `scikit‑learn`, `joblib`, `lightgbm`, `xgboost` and `streamlit`. Install them via pip:
 ```bash
-pip install pandas scikit-learn joblib lightgbm streamlit
+pip install pandas scikit-learn joblib lightgbm xgboost streamlit
 ```
 
 ## Reproducing the full pipeline
