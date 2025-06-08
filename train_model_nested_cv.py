@@ -5,9 +5,14 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import make_scorer, roc_auc_score
+from sklearn.metrics import (
+    make_scorer,
+    roc_auc_score,
+)
 
-def main():
+def main(export_csv=True, csv_path="model_performance.csv"):
+    """Voert nested cross-validation uit en exporteert optioneel de resultaten."""
+
     # 1. Data laden
     df = pd.read_csv('processed_data.csv')
     numeric_feats = [
@@ -57,6 +62,14 @@ def main():
                              cv=outer_cv, n_jobs=-1)
     print("Nested CV ROC AUC scores:", scores)
     print("Mean & std:", scores.mean(), scores.std())
+
+    if export_csv:
+        perf_df = pd.DataFrame({
+            'Metric': ['Nested CV ROC AUC Mean', 'Nested CV ROC AUC Std'],
+            'Value': [scores.mean(), scores.std()]
+        }).set_index('Metric')
+        perf_df.to_csv(csv_path)
+        print(f"Model performance saved to {csv_path}")
 
 if __name__ == '__main__':
     main()

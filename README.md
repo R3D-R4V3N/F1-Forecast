@@ -51,8 +51,9 @@ F1-Forecast is a small project that predicts which drivers will finish in the to
    - Numerical features are median‑imputed and scaled; categorical features are one‑hot encoded.
    - A `RandomForestClassifier` is tuned with a small parameter grid.
    - Metrics such as ROC‑AUC, precision/recall and mean absolute error are printed.
+   - Key metrics are written to `model_performance.csv` for the Streamlit dashboard.
 
-   To experiment with a different algorithm you can run `train_model_lgbm.py`, `train_model_xgb.py` or `train_model_nested_cv.py`.
+   You can experiment with other algorithms via `train_model_lgbm.py`, `train_model_xgb.py` or `train_model_nested_cv.py`. These scripts log their metrics to the same `model_performance.csv` file so the dashboard always shows the most recent training results.
 
 4. **Export trained pipeline**
    ```bash
