@@ -7,10 +7,20 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
-from sklearn.metrics import classification_report, roc_auc_score, make_scorer
+from sklearn.metrics import (
+    classification_report,
+    roc_auc_score,
+    make_scorer,
+    confusion_matrix,
+    precision_recall_curve,
+    auc,
+    mean_absolute_error,
+)
 
 
-def main():
+def main(export_csv=True, csv_path="model_performance.csv"):
+    """Train een XGBoost-model en exporteer optioneel de resultaten."""
+
     # 1. Laad de verwerkte data
     df = pd.read_csv('processed_data.csv')
 
@@ -81,7 +91,20 @@ def main():
     y_proba = grid.predict_proba(X_test)[:, 1]
     print("=== XGBoost Test Performance ===")
     print(classification_report(y_test, y_pred))
-    print(f"Test ROC AUC: {roc_auc_score(y_test, y_proba):.3f}")
+    test_auc = roc_auc_score(y_test, y_proba)
+    print(f"Test ROC AUC: {test_auc:.3f}")
+
+    mae = mean_absolute_error(y_test, y_proba)
+    precision_vals, recall_vals, _ = precision_recall_curve(y_test, y_proba)
+    pr_auc = auc(recall_vals, precision_vals)
+
+    if export_csv:
+        perf_df = pd.DataFrame({
+            'Metric': ['CV ROC AUC', 'Test ROC AUC', 'Mean Abs Error', 'PR AUC'],
+            'Value': [grid.best_score_, test_auc, mae, pr_auc]
+        }).set_index('Metric')
+        perf_df.to_csv(csv_path)
+        print(f"Model performance saved to {csv_path}")
 
 if __name__ == '__main__':
     main()
